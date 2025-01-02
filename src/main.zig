@@ -5,9 +5,10 @@ const print = std.debug.print;
 const Commands = enum(u8) {
     SELL = '0',
     BUY = '1',
-    CANCEL_ORDER = '3',
-    PRINT_BOOK_BUY = '2',
-    PRINT_BOOK_SELL = '4',
+    CANCEL_SELL = '3',
+    CANCEL_BUY = '4',
+    PRINT_BOOK_BUY = '5',
+    PRINT_BOOK_SELL = '6',
 };
 
 const Order = struct {
@@ -22,7 +23,6 @@ const Socket = struct {
     socket: std.posix.socket_t,
 
     fn init(ip: []const u8, port: u16) !Socket {
-        // create a socket
         const socket_t = try std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, 0);
         errdefer std.posix.close(socket_t);
         const address = try std.net.Address.parseIp4(ip, port);
@@ -36,7 +36,7 @@ const Socket = struct {
 
 pub const std_options = .{
     // Set the log level to info
-    .log_level = .info,
+    .log_level = .debug,
 
     // Define logFn to override the std implementation
     .logFn = logFn,
@@ -49,28 +49,28 @@ pub fn logFn(
     args: anytype,
 ) void {
     const allocator = std.heap.page_allocator;
-    const home = std.os.getenv("HOME") orelse {
-        std.debug.print("Failed to read $HOME.\n", .{});
+    const home = std.posix.getenv("HOME") orelse {
+        print("Failed to read $HOME.\n", .{});
         return;
     };
-    const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, ".local/share/my-app.log" }) catch |err| {
-        std.debug.print("Failed to create log file path: {}\n", .{err});
+    const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, ".local/share/zengine.log" }) catch |err| {
+        print("Failed to create log file path: {}\n", .{err});
         return;
     };
     defer allocator.free(path);
 
     const file = std.fs.openFileAbsolute(path, .{ .mode = .read_write }) catch |err| {
-        std.debug.print("Failed to open log file: {}\n", .{err});
+        print("Failed to open log file: {}\n", .{err});
         return;
     };
     defer file.close();
 
     const stat = file.stat() catch |err| {
-        std.debug.print("Failed to get stat of log file: {}\n", .{err});
+        print("Failed to get stat of log file: {}\n", .{err});
         return;
     };
     file.seekTo(stat.size) catch |err| {
-        std.debug.print("Failed to seek log file: {}\n", .{err});
+        print("Failed to seek log file: {}\n", .{err});
         return;
     };
 
@@ -85,7 +85,11 @@ pub fn logFn(
         std.debug.print("Failed to write to log file: {}\n", .{err});
     };
 }
+
 pub fn main() !void {
+    std.log.debug("This will not print.", .{});
+    std.log.info("Application Started. Version 0.0.1", .{});
+    std.log.err("Log file not found.", .{});
     // Setup
     // connection
     var sc = try Socket.init("127.0.0.1", 3001); // conection
@@ -147,6 +151,7 @@ fn parse_buy(order_book: *ArrayList(Order), new_order: Order) !void {
     } else {
         try order_book.append(new_order);
     }
+    std.log.info("BUY Order: user {} qtd {}@{} on {}", .{ new_order.user, new_order.quantity, new_order.price, new_order.timestamp });
     print("Buy Book: {}\n", .{order_book});
 }
 
@@ -161,6 +166,7 @@ fn parse_sell(order_book: *ArrayList(Order), new_order: Order) !void {
     } else {
         try order_book.append(new_order);
     }
+    std.log.info("SELL Order: user {} qtd {}@{} on {}", .{ new_order.user, new_order.quantity, new_order.price, new_order.timestamp });
     print("Sell Book: {}\n", .{order_book});
 }
 
@@ -174,7 +180,7 @@ fn match_orders(buy_book: *ArrayList(Order), sell_book: *ArrayList(Order)) void 
             if (best_buy.price >= best_sell.price) {
                 if (best_sell.quantity == best_buy.quantity) {
                     const b_order = buy_book.orderedRemove(0);
-                    const s_order = buy_book.orderedRemove(0);
+                    const s_order = sell_book.orderedRemove(0);
                     print("user {} bought {} @ {}\n", .{ b_order.user, b_order.quantity, b_order.price });
                     print("user {} sold {} @ {}\n", .{ s_order.user, s_order.quantity, s_order.price });
                     continue :match;
