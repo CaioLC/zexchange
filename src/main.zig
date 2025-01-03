@@ -3,9 +3,17 @@ const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const print = std.debug.print;
 
+// GLOBAL CONFIG
 const home = "/home/caio/";
 const log_path = home ++ ".local/share/zengine/info.log";
+pub const std_options = .{
+    .log_level = .debug,
+    .logFn = logFn,
+};
+const server_ip = "127.0.0.1";
+const server_port = 3001; // conection
 
+// Structs and Enums
 const Commands = enum(u8) {
     SELL = '0',
     BUY = '1',
@@ -38,21 +46,13 @@ const Socket = struct {
     }
 };
 
-pub const std_options = .{
-    .log_level = .debug,
-    .logFn = logFn,
-};
-
-const LogScopes = enum { DEFAULT, STATE };
-
+/// This logger prints to file and stdErr simultaneously.
 pub fn logFn(
     comptime level: std.log.Level,
     comptime scope: @Type(.EnumLiteral),
     comptime format: []const u8,
     args: anytype,
 ) void {
-    // setup generic logger.
-
     const file = std.fs.openFileAbsolute(log_path, .{ .mode = .read_write }) catch |err| {
         print("Failed to open log file: {}\n", .{err});
         return;
@@ -114,21 +114,24 @@ pub fn logFn(
 // }
 
 pub fn main() !void {
-    std.log.debug("This will not print.", .{});
     std.log.info("Application Started. Version 0.0.1", .{});
-    std.log.err("Log file not found.", .{});
     // Setup
     // connection
     var sc = try Socket.init("127.0.0.1", 3001); // conection
     try sc.bind();
+    std.log.debug("Socket bound: {s} port {}", .{ server_ip, server_port });
+
     // books
     var gba = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gba.allocator();
 
     var buy_book = ArrayList(Order).init(allocator);
     var sell_book = ArrayList(Order).init(allocator);
+    std.log.debug("Buy&Sell books initialized.", .{});
+    // TODO: populate books from state file.
 
     var msg_buffer: [36]u8 = undefined; // mem. buffer
+    std.log.info("All services initialized. Listening on {s}:{}.", .{ server_ip, server_port });
     while (true) {
         const received_bytes = try std.posix.recvfrom(sc.socket, msg_buffer[0..], 0, null, null);
         print("Received {d} bytes: {s}\n", .{ received_bytes, msg_buffer[0..received_bytes] });
