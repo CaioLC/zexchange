@@ -1,6 +1,10 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
+const Allocator = std.mem.Allocator;
 const print = std.debug.print;
+
+const home = "/home/caio/";
+const log_path = home ++ ".local/share/zengine/info.log";
 
 const Commands = enum(u8) {
     SELL = '0',
@@ -35,12 +39,11 @@ const Socket = struct {
 };
 
 pub const std_options = .{
-    // Set the log level to info
     .log_level = .debug,
-
-    // Define logFn to override the std implementation
     .logFn = logFn,
 };
+
+const LogScopes = enum { DEFAULT, STATE };
 
 pub fn logFn(
     comptime level: std.log.Level,
@@ -48,18 +51,9 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const allocator = std.heap.page_allocator;
-    const home = std.posix.getenv("HOME") orelse {
-        print("Failed to read $HOME.\n", .{});
-        return;
-    };
-    const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, ".local/share/zengine.log" }) catch |err| {
-        print("Failed to create log file path: {}\n", .{err});
-        return;
-    };
-    defer allocator.free(path);
+    // setup generic logger.
 
-    const file = std.fs.openFileAbsolute(path, .{ .mode = .read_write }) catch |err| {
+    const file = std.fs.openFileAbsolute(log_path, .{ .mode = .read_write }) catch |err| {
         print("Failed to open log file: {}\n", .{err});
         return;
     };
@@ -69,13 +63,13 @@ pub fn logFn(
         print("Failed to get stat of log file: {}\n", .{err});
         return;
     };
+
     file.seekTo(stat.size) catch |err| {
         print("Failed to seek log file: {}\n", .{err});
         return;
     };
 
     const prefix = "[" ++ comptime level.asText() ++ "] " ++ "(" ++ @tagName(scope) ++ ") ";
-
     var buffer: [256]u8 = undefined;
     const message = std.fmt.bufPrint(buffer[0..], prefix ++ format ++ "\n", args) catch |err| {
         std.debug.print("Failed to format log message with args: {}\n", .{err});
@@ -84,7 +78,40 @@ pub fn logFn(
     file.writeAll(message) catch |err| {
         std.debug.print("Failed to write to log file: {}\n", .{err});
     };
+
+    // Print the message to stderr, silently ignoring any errors
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+    const stderr = std.io.getStdErr().writer();
+    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
 }
+
+// pub fn engine_state(allocator: Allocator) void {
+//     // setup engine state logger
+//     const home = HOME orelse {
+//         print("Failed to get the HOME env var", .{});
+//     };
+//     const path = std.fmt.allocPrint(allocator, "{s}/{s}/{s}_{s}", .{ home, ".local/share/zengine/", "20250101", "state.log" }) catch |err| {
+//         print("Failed to create log file path: {}\n", .{err});
+//         return;
+//     };
+//     defer allocator.free(path);
+//
+//     const file = std.fs.openFileAbsolute(path, .{ .mode = .read_write }) catch |err| {
+//         print("Failed to open log file: {}\n", .{err});
+//         return;
+//     };
+//     defer file.close();
+//
+//     const stat = file.stat() catch |err| {
+//         print("Failed to get stat of log file: {}\n", .{err});
+//         return;
+//     };
+//     file.seekTo(stat.size) catch |err| {
+//         print("Failed to seek log file: {}\n", .{err});
+//         return;
+//     };
+// }
 
 pub fn main() !void {
     std.log.debug("This will not print.", .{});
