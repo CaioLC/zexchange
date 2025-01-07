@@ -1,0 +1,28 @@
+[info] (default) Application Started. Version 0.0.1
+[debug] (default) Socket bound: 127.0.0.1 port 3001
+[debug] (default) Buy&Sell books initialized.
+[info] (default) All services initialized. Listening on 127.0.0.1:3001.
+[info] (default) BUY Order: user 2 qtd 93@2 on 93
+[info] (default) SELL Order: user 1 qtd 33@1 on 24
+[info] (default) SELL Order: user 1 qtd 33@1 on 25
+[info] (default) SELL Order: user 1 qtd 33@1 on 26
+[info] (default) Application Started. Version 0.0.1
+[debug] (default) Socket bound: 127.0.0.1 port 3001
+[debug] (default) Buy&Sell books initialized.
+[info] (default) All services initialized. Listening on 127.0.0.1:3001.
+[debug] (default) Received 10 bytes: 001013325
+
+
+[info] (default) SELL Order: user 1 qtd 33@1 on 25
+[debug] (default) Empty book for buys or sells. No match possible
+
+[info] (default) Application Started. Version 0.0.1
+[debug] (default) Socket bound: 127.0.0.1 port 3001
+[debug] (default) Buy&Sell books initialized.
+[info] (default) All services initialized. Listening on 127.0.0.1:3001.
+[debug] (default) Received 10 bytes: 001013325
+
+
+[info] (default) SELL Order: user 1 qtd 33@1 on 25
+[debug] (default) Empty book for buys or sells. No match possible
+

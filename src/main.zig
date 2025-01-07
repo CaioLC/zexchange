@@ -1,17 +1,19 @@
 const std = @import("std");
+const logger = @import("./logger.zig");
+const net = @import("./net.zig");
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const print = std.debug.print;
 
 // GLOBAL CONFIG
-const home = "/home/caio/";
-const log_path = home ++ ".local/share/zengine/info.log";
+pub const home = "A:/Projects/zexchange/";
+pub const log_path = home ++ "logs/info.log";
 pub const std_options = .{
     .log_level = .debug,
-    .logFn = logFn,
+    .logFn = logger.logFn,
 };
-const server_ip = "127.0.0.1";
-const server_port = 3001; // conection
+pub const server_ip = "127.0.0.1";
+pub const server_port = 3001; // conection
 
 // Structs and Enums
 const Commands = enum(u8) {
@@ -30,60 +32,31 @@ const Order = struct {
     timestamp: u32,
 };
 
-const Socket = struct {
-    address: std.net.Address,
-    socket: std.posix.socket_t,
+pub fn main() !void {
+    std.log.info("Application Started. Version 0.0.1", .{});
+    // Setup
+    // connection
+    var sc = try net.Socket.init("127.0.0.1", 3001); // conection
+    try sc.bind();
+    std.log.debug("Socket bound: {s} port {}", .{ server_ip, server_port });
 
-    fn init(ip: []const u8, port: u16) !Socket {
-        const socket_t = try std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, 0);
-        errdefer std.posix.close(socket_t);
-        const address = try std.net.Address.parseIp4(ip, port);
-        return Socket{ .address = address, .socket = socket_t };
+    // books
+    var gba = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gba.allocator();
+
+    var buy_book = ArrayList(Order).init(allocator);
+    var sell_book = ArrayList(Order).init(allocator);
+    std.log.debug("Buy&Sell books initialized.", .{});
+    // TODO: populate books from state file.
+
+    var msg_buffer: [36]u8 = undefined; // mem. buffer
+    std.log.info("All services initialized. Listening on {s}:{}.", .{ server_ip, server_port });
+    while (true) {
+        const received_bytes = try std.posix.recvfrom(sc.socket, msg_buffer[0..], 0, null, null);
+        std.log.debug("Received {d} bytes: {s}\n", .{ received_bytes, msg_buffer[0..received_bytes] });
+        try parse_msg(msg_buffer[0..], &buy_book, &sell_book);
+        match_orders(&buy_book, &sell_book);
     }
-
-    fn bind(self: *Socket) !void {
-        try std.posix.bind(self.socket, &self.address.any, self.address.getOsSockLen());
-    }
-};
-
-/// This logger prints to file and stdErr simultaneously.
-pub fn logFn(
-    comptime level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    const file = std.fs.openFileAbsolute(log_path, .{ .mode = .read_write }) catch |err| {
-        print("Failed to open log file: {}\n", .{err});
-        return;
-    };
-    defer file.close();
-
-    const stat = file.stat() catch |err| {
-        print("Failed to get stat of log file: {}\n", .{err});
-        return;
-    };
-
-    file.seekTo(stat.size) catch |err| {
-        print("Failed to seek log file: {}\n", .{err});
-        return;
-    };
-
-    const prefix = "[" ++ comptime level.asText() ++ "] " ++ "(" ++ @tagName(scope) ++ ") ";
-    var buffer: [256]u8 = undefined;
-    const message = std.fmt.bufPrint(buffer[0..], prefix ++ format ++ "\n", args) catch |err| {
-        std.debug.print("Failed to format log message with args: {}\n", .{err});
-        return;
-    };
-    file.writeAll(message) catch |err| {
-        std.debug.print("Failed to write to log file: {}\n", .{err});
-    };
-
-    // Print the message to stderr, silently ignoring any errors
-    std.debug.lockStdErr();
-    defer std.debug.unlockStdErr();
-    const stderr = std.io.getStdErr().writer();
-    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
 }
 
 // pub fn engine_state(allocator: Allocator) void {
@@ -113,32 +86,7 @@ pub fn logFn(
 //     };
 // }
 
-pub fn main() !void {
-    std.log.info("Application Started. Version 0.0.1", .{});
-    // Setup
-    // connection
-    var sc = try Socket.init("127.0.0.1", 3001); // conection
-    try sc.bind();
-    std.log.debug("Socket bound: {s} port {}", .{ server_ip, server_port });
 
-    // books
-    var gba = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gba.allocator();
-
-    var buy_book = ArrayList(Order).init(allocator);
-    var sell_book = ArrayList(Order).init(allocator);
-    std.log.debug("Buy&Sell books initialized.", .{});
-    // TODO: populate books from state file.
-
-    var msg_buffer: [36]u8 = undefined; // mem. buffer
-    std.log.info("All services initialized. Listening on {s}:{}.", .{ server_ip, server_port });
-    while (true) {
-        const received_bytes = try std.posix.recvfrom(sc.socket, msg_buffer[0..], 0, null, null);
-        print("Received {d} bytes: {s}\n", .{ received_bytes, msg_buffer[0..received_bytes] });
-        try parse_msg(msg_buffer[0..], &buy_book, &sell_book);
-        match_orders(&buy_book, &sell_book);
-    }
-}
 
 fn parse_msg(buf: []const u8, buy_book: *ArrayList(Order), sell_book: *ArrayList(Order)) !void {
     // NOTE: this is parseInt in development mode, but we may need to change
@@ -147,7 +95,7 @@ fn parse_msg(buf: []const u8, buy_book: *ArrayList(Order), sell_book: *ArrayList
 
     switch (order) {
         '0' => {
-            print("SELL\n", .{});
+            // print("SELL\n", .{});
             const new_order = Order{
                 .user = try std.fmt.parseInt(u32, buf[1..3], 10),
                 .price = try std.fmt.parseInt(u32, buf[3..5], 10),
@@ -157,7 +105,7 @@ fn parse_msg(buf: []const u8, buy_book: *ArrayList(Order), sell_book: *ArrayList
             try parse_sell(sell_book, new_order);
         },
         '1' => {
-            print("BUY\n", .{});
+            // print("BUY\n", .{});
             const new_order = Order{
                 .user = try std.fmt.parseInt(u32, buf[1..3], 10),
                 .price = try std.fmt.parseInt(u32, buf[3..5], 10),
@@ -166,7 +114,7 @@ fn parse_msg(buf: []const u8, buy_book: *ArrayList(Order), sell_book: *ArrayList
             };
             try parse_buy(buy_book, new_order);
         },
-        else => print("first byte: {}\n", .{order}),
+        else => print("Could not parse first byte: '{s}'\n", .{order}),
     }
 }
 
@@ -182,7 +130,6 @@ fn parse_buy(order_book: *ArrayList(Order), new_order: Order) !void {
         try order_book.append(new_order);
     }
     std.log.info("BUY Order: user {} qtd {}@{} on {}", .{ new_order.user, new_order.quantity, new_order.price, new_order.timestamp });
-    print("Buy Book: {}\n", .{order_book});
 }
 
 fn parse_sell(order_book: *ArrayList(Order), new_order: Order) !void {
@@ -197,7 +144,6 @@ fn parse_sell(order_book: *ArrayList(Order), new_order: Order) !void {
         try order_book.append(new_order);
     }
     std.log.info("SELL Order: user {} qtd {}@{} on {}", .{ new_order.user, new_order.quantity, new_order.price, new_order.timestamp });
-    print("Sell Book: {}\n", .{order_book});
 }
 
 fn match_orders(buy_book: *ArrayList(Order), sell_book: *ArrayList(Order)) void {
@@ -211,8 +157,8 @@ fn match_orders(buy_book: *ArrayList(Order), sell_book: *ArrayList(Order)) void 
                 if (best_sell.quantity == best_buy.quantity) {
                     const b_order = buy_book.orderedRemove(0);
                     const s_order = sell_book.orderedRemove(0);
-                    print("user {} bought {} @ {}\n", .{ b_order.user, b_order.quantity, b_order.price });
-                    print("user {} sold {} @ {}\n", .{ s_order.user, s_order.quantity, s_order.price });
+                    std.log.info("user {} bought {} @ {}\n", .{ b_order.user, b_order.quantity, b_order.price });
+                    std.log.info("user {} sold {} @ {}\n", .{ s_order.user, s_order.quantity, s_order.price });
                     continue :match;
                 }
                 const matched_quantity = @min(best_buy.quantity, best_sell.quantity);
@@ -220,19 +166,19 @@ fn match_orders(buy_book: *ArrayList(Order), sell_book: *ArrayList(Order)) void 
                     const b_order = buy_book.orderedRemove(0);
                     best_sell.quantity -= matched_quantity;
 
-                    print("user {} bought {} @ {}\n", .{ b_order.user, b_order.quantity, b_order.price });
+                    std.log.info("user {} bought {} @ {}\n", .{ b_order.user, b_order.quantity, b_order.price });
                 }
                 if (matched_quantity == best_sell.quantity) {
                     const s_order = buy_book.orderedRemove(0);
                     best_buy.quantity -= matched_quantity;
-                    print("user {} sold {} @ {}\n", .{ s_order.user, s_order.quantity, s_order.price });
+                    std.log.info("user {} sold {} @ {}\n", .{ s_order.user, s_order.quantity, s_order.price });
                 }
             } else {
-                print("No matching orders. Buy {}@{} | Sell {}@{}\n", .{ best_buy.quantity, best_buy.price, best_sell.quantity, best_sell.price });
+                std.log.debug("No matching orders. Buy {}@{} | Sell {}@{}\n", .{ best_buy.quantity, best_buy.price, best_sell.quantity, best_sell.price });
                 break :match;
             }
         } else {
-            print("Empty book for buys or sells. No match possible\n", .{});
+            std.log.debug("Empty book for buys or sells. No match possible\n", .{});
             break :match;
         }
     }
